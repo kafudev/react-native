@@ -1,29 +1,30 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @emails oncall+react_native
+ * @oncall react_native
  */
 
-import createPerformanceLogger from '../../Utilities/createPerformanceLogger';
+'use strict';
+
+const createPerformanceLogger =
+  require('../../Utilities/createPerformanceLogger').default;
+const GlobalPerformanceLogger = require('../../Utilities/GlobalPerformanceLogger');
+const Platform = require('../../Utilities/Platform');
+const XMLHttpRequest = require('../XMLHttpRequest');
 
 jest.unmock('../../Utilities/Platform');
 jest.mock('../../Utilities/GlobalPerformanceLogger');
-
-const Platform = require('../../Utilities/Platform');
-const GlobalPerformanceLogger = require('../../Utilities/GlobalPerformanceLogger');
 let requestId = 1;
-
 function setRequestId(id) {
   if (Platform.OS === 'ios') {
     return;
   }
   requestId = id;
 }
-
 jest
   .dontMock('event-target-shim')
   .setMock('../../BatchedBridge/NativeModules', {
@@ -44,8 +45,6 @@ jest
       },
     },
   });
-
-const XMLHttpRequest = require('../XMLHttpRequest');
 
 describe('XMLHttpRequest', function () {
   let xhr;

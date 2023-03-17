@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -32,7 +32,6 @@ import com.facebook.react.bridge.ReadableNativeMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.common.build.ReactBuildConfig;
 import com.facebook.react.uimanager.PixelUtil;
-import com.facebook.react.uimanager.ReactAccessibilityDelegate;
 import com.facebook.react.uimanager.ReactStylesDiffMap;
 import com.facebook.react.uimanager.ViewProps;
 import com.facebook.yoga.YogaConstants;
@@ -73,11 +72,12 @@ public class TextLayoutManager {
 
   public static boolean isRTL(ReadableMap attributedString) {
     ReadableArray fragments = attributedString.getArray("fragments");
-    for (int i = 0; i < fragments.size(); i++) {
-      ReadableMap fragment = fragments.getMap(i);
+    if (fragments != null && fragments.size() > 0) {
+      ReadableMap fragment = fragments.getMap(0);
       ReadableMap map = fragment.getMap("textAttributes");
-      return TextAttributeProps.getLayoutDirection(map.getString(ViewProps.LAYOUT_DIRECTION))
-          == LayoutDirection.RTL;
+      return map != null
+          && TextAttributeProps.getLayoutDirection(map.getString(ViewProps.LAYOUT_DIRECTION))
+              == LayoutDirection.RTL;
     }
     return false;
   }
@@ -125,12 +125,10 @@ public class TextLayoutManager {
                 sb.length(),
                 new TextInlineViewPlaceholderSpan(reactTag, (int) width, (int) height)));
       } else if (end >= start) {
-        if (ReactAccessibilityDelegate.AccessibilityRole.LINK.equals(
-            textAttributes.mAccessibilityRole)) {
-          ops.add(
-              new SetSpanOperation(
-                  start, end, new ReactClickableSpan(reactTag, textAttributes.mColor)));
-        } else if (textAttributes.mIsColorSet) {
+        if (textAttributes.mIsAccessibilityLink) {
+          ops.add(new SetSpanOperation(start, end, new ReactClickableSpan(reactTag)));
+        }
+        if (textAttributes.mIsColorSet) {
           ops.add(
               new SetSpanOperation(
                   start, end, new ReactForegroundColorSpan(textAttributes.mColor)));
@@ -195,24 +193,8 @@ public class TextLayoutManager {
       ReadableMap attributedString,
       @Nullable ReactTextViewManagerCallback reactTextViewManagerCallback) {
 
-    Spannable preparedSpannableText;
-
-    synchronized (sSpannableCacheLock) {
-      preparedSpannableText = sSpannableCache.get((ReadableNativeMap) attributedString);
-      if (preparedSpannableText != null) {
-        return preparedSpannableText;
-      }
-    }
-
-    preparedSpannableText =
-        createSpannableFromAttributedString(
-            context, attributedString, reactTextViewManagerCallback);
-
-    synchronized (sSpannableCacheLock) {
-      sSpannableCache.put((ReadableNativeMap) attributedString, preparedSpannableText);
-    }
-
-    return preparedSpannableText;
+    return createSpannableFromAttributedString(
+        context, attributedString, reactTextViewManagerCallback);
   }
 
   private static Spannable createSpannableFromAttributedString(
@@ -256,8 +238,8 @@ public class TextLayoutManager {
     Layout layout;
     int spanLength = text.length();
     boolean unconstrainedWidth = widthYogaMeasureMode == YogaMeasureMode.UNDEFINED || width < 0;
-    TextPaint textPaint = sTextPaintInstance;
-    float desiredWidth = boring == null ? Layout.getDesiredWidth(text, textPaint) : Float.NaN;
+    float desiredWidth =
+        boring == null ? Layout.getDesiredWidth(text, sTextPaintInstance) : Float.NaN;
 
     if (boring == null
         && (unconstrainedWidth
@@ -270,7 +252,7 @@ public class TextLayoutManager {
         layout =
             new StaticLayout(
                 text,
-                textPaint,
+                sTextPaintInstance,
                 hintWidth,
                 Layout.Alignment.ALIGN_NORMAL,
                 1.f,
@@ -278,7 +260,7 @@ public class TextLayoutManager {
                 includeFontPadding);
       } else {
         layout =
-            StaticLayout.Builder.obtain(text, 0, spanLength, textPaint, hintWidth)
+            StaticLayout.Builder.obtain(text, 0, spanLength, sTextPaintInstance, hintWidth)
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setLineSpacing(0.f, 1.f)
                 .setIncludePad(includeFontPadding)
@@ -299,7 +281,7 @@ public class TextLayoutManager {
       layout =
           BoringLayout.make(
               text,
-              textPaint,
+              sTextPaintInstance,
               boringLayoutWidth,
               Layout.Alignment.ALIGN_NORMAL,
               1.f,
@@ -313,7 +295,7 @@ public class TextLayoutManager {
         layout =
             new StaticLayout(
                 text,
-                textPaint,
+                sTextPaintInstance,
                 (int) width,
                 Layout.Alignment.ALIGN_NORMAL,
                 1.f,
@@ -321,7 +303,7 @@ public class TextLayoutManager {
                 includeFontPadding);
       } else {
         StaticLayout.Builder builder =
-            StaticLayout.Builder.obtain(text, 0, spanLength, textPaint, (int) width)
+            StaticLayout.Builder.obtain(text, 0, spanLength, sTextPaintInstance, (int) width)
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setLineSpacing(0.f, 1.f)
                 .setIncludePad(includeFontPadding)
@@ -350,7 +332,6 @@ public class TextLayoutManager {
       @Nullable float[] attachmentsPositions) {
 
     // TODO(5578671): Handle text direction (see View#getTextDirectionHeuristic)
-    TextPaint textPaint = sTextPaintInstance;
     Spannable text;
     if (attributedString.hasKey("cacheId")) {
       int cacheId = attributedString.getInt("cacheId");
@@ -360,7 +341,7 @@ public class TextLayoutManager {
       if (sTagToSpannableCache.containsKey(cacheId)) {
         text = sTagToSpannableCache.get(cacheId);
         if (ENABLE_MEASURE_LOGGING) {
-          FLog.e(TAG, "Text for spannable found for cacheId[" + cacheId + "]: " + text.toString());
+          FLog.e(TAG, "Text for spannable found for cacheId[" + cacheId + "]: " + text);
         }
       } else {
         if (ENABLE_MEASURE_LOGGING) {
@@ -387,7 +368,7 @@ public class TextLayoutManager {
       throw new IllegalStateException("Spannable element has not been prepared in onBeforeLayout");
     }
 
-    BoringLayout.Metrics boring = BoringLayout.isBoring(text, textPaint);
+    BoringLayout.Metrics boring = BoringLayout.isBoring(text, sTextPaintInstance);
 
     Layout layout =
         createLayout(
@@ -424,6 +405,13 @@ public class TextLayoutManager {
       if (widthYogaMeasureMode == YogaMeasureMode.AT_MOST && calculatedWidth > width) {
         calculatedWidth = width;
       }
+    }
+
+    // Android 11+ introduces changes in text width calculation which leads to cases
+    // where the container is measured smaller than text. Math.ceil prevents it
+    // See T136756103 for investigation
+    if (android.os.Build.VERSION.SDK_INT > android.os.Build.VERSION_CODES.Q) {
+      calculatedWidth = (float) Math.ceil(calculatedWidth);
     }
 
     float calculatedHeight = height;
@@ -538,9 +526,8 @@ public class TextLayoutManager {
       ReadableMap attributedString,
       ReadableMap paragraphAttributes,
       float width) {
-    TextPaint textPaint = sTextPaintInstance;
     Spannable text = getOrCreateSpannableForText(context, attributedString, null);
-    BoringLayout.Metrics boring = BoringLayout.isBoring(text, textPaint);
+    BoringLayout.Metrics boring = BoringLayout.isBoring(text, sTextPaintInstance);
 
     int textBreakStrategy =
         TextAttributeProps.getTextBreakStrategy(

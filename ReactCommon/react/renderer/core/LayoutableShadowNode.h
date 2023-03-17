@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,13 +12,12 @@
 #include <memory>
 #include <vector>
 
-#include <better/small_vector.h>
+#include <butter/small_vector.h>
 #include <react/debug/react_native_assert.h>
 #include <react/renderer/core/LayoutMetrics.h>
 #include <react/renderer/core/ShadowNode.h>
 #include <react/renderer/core/ShadowNodeFragment.h>
 #include <react/renderer/debug/DebugStringConvertible.h>
-#include <react/renderer/graphics/Geometry.h>
 #include <react/renderer/graphics/Transform.h>
 
 namespace facebook {
@@ -43,13 +42,14 @@ class LayoutableShadowNode : public ShadowNode {
       ShadowNodeFragment const &fragment);
 
   static ShadowNodeTraits BaseTraits();
+  static ShadowNodeTraits::Trait IdentifierTrait();
 
   struct LayoutInspectingPolicy {
     bool includeTransform{true};
     bool includeViewportOffset{false};
   };
 
-  using UnsharedList = better::
+  using UnsharedList = butter::
       small_vector<LayoutableShadowNode *, kShadowNodeChildrenSmallVectorSize>;
 
   /*
@@ -133,7 +133,7 @@ class LayoutableShadowNode : public ShadowNode {
    * parameter.
    */
   static ShadowNode::Shared findNodeAtPoint(
-      ShadowNode::Shared node,
+      ShadowNode::Shared const &node,
       Point point);
 
   /*
@@ -164,30 +164,6 @@ class LayoutableShadowNode : public ShadowNode {
 
   LayoutMetrics layoutMetrics_;
 };
-
-template <>
-inline LayoutableShadowNode const &traitCast<LayoutableShadowNode const &>(
-    ShadowNode const &shadowNode) {
-  bool castable =
-      shadowNode.getTraits().check(ShadowNodeTraits::Trait::LayoutableKind);
-  react_native_assert(castable);
-  (void)castable;
-  return static_cast<LayoutableShadowNode const &>(shadowNode);
-}
-
-template <>
-inline LayoutableShadowNode const *traitCast<LayoutableShadowNode const *>(
-    ShadowNode const *shadowNode) {
-  if (!shadowNode) {
-    return nullptr;
-  }
-  bool castable =
-      shadowNode->getTraits().check(ShadowNodeTraits::Trait::LayoutableKind);
-  if (!castable) {
-    return nullptr;
-  }
-  return static_cast<LayoutableShadowNode const *>(shadowNode);
-}
 
 } // namespace react
 } // namespace facebook

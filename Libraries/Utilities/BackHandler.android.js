@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -97,11 +97,9 @@ const BackHandler: TBackHandler = {
     eventName: BackPressEventName,
     handler: () => ?boolean,
   ): void {
-    if (_backPressSubscriptions.indexOf(handler) !== -1) {
-      _backPressSubscriptions.splice(
-        _backPressSubscriptions.indexOf(handler),
-        1,
-      );
+    const index = _backPressSubscriptions.indexOf(handler);
+    if (index !== -1) {
+      _backPressSubscriptions.splice(index, 1);
     }
   },
 };

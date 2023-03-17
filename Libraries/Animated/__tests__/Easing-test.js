@@ -1,16 +1,16 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @emails oncall+react_native
+ * @oncall react_native
  */
 
 'use strict';
 
-const Easing = require('../Easing');
+import Easing from '../Easing';
 describe('Easing', () => {
   it('should work with linear', () => {
     const easing = Easing.linear;

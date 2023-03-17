@@ -1,11 +1,11 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @emails oncall+react_native
+ * @oncall react_native
  */
 
 'use strict';
@@ -71,6 +71,11 @@ describe('Blob', function () {
     expect(sliceB.data.offset).toBe(2384);
     expect(sliceB.size).toBe(7621 - 2384);
     expect(sliceB.type).toBe('');
+
+    const sliceC = blob.slice(34543, 34569);
+
+    expect(sliceC.data.offset).toBe(34543);
+    expect(sliceC.size).toBe(Math.min(blob.data.size, 34569) - 34543);
   });
 
   it('should close a blob', () => {

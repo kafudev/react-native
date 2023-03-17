@@ -1,11 +1,11 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @emails oncall+react_native
+ * @oncall react_native
  */
 
 jest
@@ -20,14 +20,14 @@ jest
   }))
   .mock('../NativeAnimatedModule')
   .mock('../../EventEmitter/NativeEventEmitter')
-  // findNodeHandle is imported from ReactNative so mock that whole module.
-  .setMock('../../Renderer/shims/ReactNative', {findNodeHandle: () => 1});
+  // findNodeHandle is imported from RendererProxy so mock that whole module.
+  .setMock('../../ReactNative/RendererProxy', {findNodeHandle: () => 1});
 
-import TestRenderer from 'react-test-renderer';
 import * as React from 'react';
+import TestRenderer from 'react-test-renderer';
 
-const Animated = require('../Animated');
-const NativeAnimatedHelper = require('../NativeAnimatedHelper');
+const Animated = require('../Animated').default;
+const NativeAnimatedHelper = require('../NativeAnimatedHelper').default;
 
 describe('Native Animated', () => {
   const NativeAnimatedModule = require('../NativeAnimatedModule').default;
@@ -120,6 +120,28 @@ describe('Native Animated', () => {
       });
       const opacity = new Animated.Value(0);
 
+      opacity.__makeNative();
+
+      const root = TestRenderer.create(<Animated.View style={{opacity}} />);
+      const tag = opacity.__getNativeTag();
+
+      root.unmount();
+
+      expect(NativeAnimatedModule.getValue).toBeCalledWith(
+        tag,
+        expect.any(Function),
+      );
+      expect(opacity.__getValue()).toBe(1);
+    });
+
+    it('should deduct offset when saving value on unmount', () => {
+      NativeAnimatedModule.getValue = jest.fn((tag, saveCallback) => {
+        // Assume current raw value of value node is 0.5, the NativeAnimated
+        // getValue API returns the sum of raw value and offset, so return 1.
+        saveCallback(1);
+      });
+      const opacity = new Animated.Value(0);
+      opacity.setOffset(0.5);
       opacity.__makeNative();
 
       const root = TestRenderer.create(<Animated.View style={{opacity}} />);
@@ -603,6 +625,7 @@ describe('Native Animated', () => {
           type: 'interpolation',
           inputRange: [10, 20],
           outputRange: [0, 1],
+          outputType: null,
           extrapolateLeft: 'extend',
           extrapolateRight: 'extend',
         },
@@ -646,6 +669,294 @@ describe('Native Animated', () => {
             },
           ],
         },
+      );
+    });
+
+    it('sends create operations before connect operations for multiple animated style props', () => {
+      const opacity = new Animated.Value(0);
+      const borderRadius = new Animated.Value(0);
+      TestRenderer.create(<Animated.View style={{borderRadius, opacity}} />);
+
+      Animated.timing(opacity, {
+        toValue: 10,
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+
+      const createCalls = NativeAnimatedModule.createAnimatedNode.mock.calls;
+      const createCallOrder =
+        NativeAnimatedModule.createAnimatedNode.mock.invocationCallOrder;
+      const connectCalls = NativeAnimatedModule.connectAnimatedNodes.mock.calls;
+      const connectCallOrder =
+        NativeAnimatedModule.connectAnimatedNodes.mock.invocationCallOrder;
+
+      // First value node and style node should both be created before they are connected
+      const valueNodeCreateCallIndices = createCalls.reduce(
+        (acc, call, index) => {
+          call[1].type === 'value' && acc.push(index);
+          return acc;
+        },
+        [],
+      );
+      const value1NodeCreateCall = createCalls[valueNodeCreateCallIndices[0]];
+      const value1NodeTag = value1NodeCreateCall[0];
+      const value1NodeCreateInvocationOrder =
+        createCallOrder[valueNodeCreateCallIndices[0]];
+
+      const styleNodeCreateCallIndex = createCalls.findIndex(
+        call => call[1].type === 'style',
+      );
+      const styleNodeCreateCall = createCalls[styleNodeCreateCallIndex];
+      const styleNodeTag = styleNodeCreateCall[0];
+      const styleNodeCreateInvocationOrder =
+        createCallOrder[styleNodeCreateCallIndex];
+
+      const value1StyleConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === value1NodeTag && call[1] === styleNodeTag,
+      );
+      const value1StyleConnectInvocationOrder =
+        connectCallOrder[value1StyleConnectCallIndex];
+
+      expect(value1NodeCreateInvocationOrder).toBeLessThan(
+        value1StyleConnectInvocationOrder,
+      );
+      expect(styleNodeCreateInvocationOrder).toBeLessThan(
+        value1StyleConnectInvocationOrder,
+      );
+
+      // Second value node and style node should both be created before they are connected
+      const value2NodeCreateCall = createCalls[valueNodeCreateCallIndices[1]];
+      const value2NodeTag = value2NodeCreateCall[0];
+      const value2NodeCreateInvocationOrder =
+        createCallOrder[valueNodeCreateCallIndices[1]];
+
+      const value2StyleConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === value2NodeTag && call[1] === styleNodeTag,
+      );
+      const value2StyleConnectInvocationOrder =
+        connectCallOrder[value2StyleConnectCallIndex];
+
+      expect(value2NodeCreateInvocationOrder).toBeLessThan(
+        value2StyleConnectInvocationOrder,
+      );
+      expect(styleNodeCreateInvocationOrder).toBeLessThan(
+        value2StyleConnectInvocationOrder,
+      );
+
+      // Style node and props node should both be created before they are connected
+      const propsNodeCreateCallIndex = createCalls.findIndex(
+        call => call[1].type === 'props',
+      );
+      const propsNodeCreateCall = createCalls[propsNodeCreateCallIndex];
+      const propsNodeTag = propsNodeCreateCall[0];
+      const propsNodeCreateInvocationOrder =
+        createCallOrder[propsNodeCreateCallIndex];
+
+      const stylePropsConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === styleNodeTag && call[1] === propsNodeTag,
+      );
+      const stylePropsConnectInvocationOrder =
+        connectCallOrder[stylePropsConnectCallIndex];
+
+      expect(styleNodeCreateInvocationOrder).toBeLessThan(
+        stylePropsConnectInvocationOrder,
+      );
+      expect(propsNodeCreateInvocationOrder).toBeLessThan(
+        stylePropsConnectInvocationOrder,
+      );
+    });
+
+    it('sends create operations before connect operations for multiple animated transform props', () => {
+      const translateX = new Animated.Value(0);
+      const translateY = new Animated.Value(0);
+      TestRenderer.create(
+        <Animated.View
+          style={{
+            transform: [{translateX: translateX}, {translateY: translateY}],
+          }}
+        />,
+      );
+
+      Animated.timing(translateX, {
+        toValue: 10,
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+
+      const createCalls = NativeAnimatedModule.createAnimatedNode.mock.calls;
+      const createCallOrder =
+        NativeAnimatedModule.createAnimatedNode.mock.invocationCallOrder;
+      const connectCalls = NativeAnimatedModule.connectAnimatedNodes.mock.calls;
+      const connectCallOrder =
+        NativeAnimatedModule.connectAnimatedNodes.mock.invocationCallOrder;
+
+      // First value node and transform node should both be created before they are connected
+      const valueNodeCreateCallIndices = createCalls.reduce(
+        (acc, call, index) => {
+          call[1].type === 'value' && acc.push(index);
+          return acc;
+        },
+        [],
+      );
+      const value1NodeCreateCall = createCalls[valueNodeCreateCallIndices[0]];
+      const value1NodeTag = value1NodeCreateCall[0];
+      const value1NodeCreateInvocationOrder =
+        createCallOrder[valueNodeCreateCallIndices[0]];
+
+      const transformNodeCreateCallIndex = createCalls.findIndex(
+        call => call[1].type === 'transform',
+      );
+      const transformNodeCreateCall = createCalls[transformNodeCreateCallIndex];
+      const transformNodeTag = transformNodeCreateCall[0];
+      const transformNodeCreateInvocationOrder =
+        createCallOrder[transformNodeCreateCallIndex];
+
+      const value1TransformConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === value1NodeTag && call[1] === transformNodeTag,
+      );
+      const value1TransformConnectInvocationOrder =
+        connectCallOrder[value1TransformConnectCallIndex];
+
+      expect(value1NodeCreateInvocationOrder).toBeLessThan(
+        value1TransformConnectInvocationOrder,
+      );
+      expect(transformNodeCreateInvocationOrder).toBeLessThan(
+        value1TransformConnectInvocationOrder,
+      );
+
+      // Second value node and transform node should both be created before they are connected
+      const value2NodeCreateCall = createCalls[valueNodeCreateCallIndices[1]];
+      const value2NodeTag = value2NodeCreateCall[0];
+      const value2NodeCreateInvocationOrder =
+        createCallOrder[valueNodeCreateCallIndices[1]];
+
+      const value2TransformConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === value2NodeTag && call[1] === transformNodeTag,
+      );
+      const value2TransformConnectInvocationOrder =
+        connectCallOrder[value2TransformConnectCallIndex];
+
+      expect(value2NodeCreateInvocationOrder).toBeLessThan(
+        value2TransformConnectInvocationOrder,
+      );
+      expect(transformNodeCreateInvocationOrder).toBeLessThan(
+        value2TransformConnectInvocationOrder,
+      );
+
+      // Transform node and style node should both be created before they are connected
+      const styleNodeCreateCallIndex = createCalls.findIndex(
+        call => call[1].type === 'style',
+      );
+      const styleNodeCreateCall = createCalls[styleNodeCreateCallIndex];
+      const styleNodeTag = styleNodeCreateCall[0];
+      const styleNodeCreateInvocationOrder =
+        createCallOrder[styleNodeCreateCallIndex];
+
+      const transformStyleConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === transformNodeTag && call[1] === styleNodeTag,
+      );
+      const transformStyleConnectInvocationOrder =
+        connectCallOrder[transformStyleConnectCallIndex];
+
+      expect(transformNodeCreateInvocationOrder).toBeLessThan(
+        transformStyleConnectInvocationOrder,
+      );
+      expect(styleNodeCreateInvocationOrder).toBeLessThan(
+        transformStyleConnectInvocationOrder,
+      );
+
+      // Style node and props node should both be created before they are connected
+      const propsNodeCreateCallIndex = createCalls.findIndex(
+        call => call[1].type === 'props',
+      );
+      const propsNodeCreateCall = createCalls[propsNodeCreateCallIndex];
+      const propsNodeTag = propsNodeCreateCall[0];
+      const propsNodeCreateInvocationOrder =
+        createCallOrder[propsNodeCreateCallIndex];
+
+      const stylePropsConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === styleNodeTag && call[1] === propsNodeTag,
+      );
+      const stylePropsConnectInvocationOrder =
+        connectCallOrder[stylePropsConnectCallIndex];
+
+      expect(styleNodeCreateInvocationOrder).toBeLessThan(
+        stylePropsConnectInvocationOrder,
+      );
+      expect(propsNodeCreateInvocationOrder).toBeLessThan(
+        stylePropsConnectInvocationOrder,
+      );
+    });
+
+    it('sends create operations before connect operations for multiple animated props', () => {
+      const propA = new Animated.Value(0);
+      const propB = new Animated.Value(0);
+      TestRenderer.create(<Animated.View propA={propA} propB={propB} />);
+
+      Animated.timing(propA, {
+        toValue: 10,
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+
+      const createCalls = NativeAnimatedModule.createAnimatedNode.mock.calls;
+      const createCallOrder =
+        NativeAnimatedModule.createAnimatedNode.mock.invocationCallOrder;
+      const connectCalls = NativeAnimatedModule.connectAnimatedNodes.mock.calls;
+      const connectCallOrder =
+        NativeAnimatedModule.connectAnimatedNodes.mock.invocationCallOrder;
+
+      // First value node and props node should both be created before they are connected
+      const valueNodeCreateCallIndices = createCalls.reduce(
+        (acc, call, index) => {
+          call[1].type === 'value' && acc.push(index);
+          return acc;
+        },
+        [],
+      );
+      const value1NodeCreateCall = createCalls[valueNodeCreateCallIndices[0]];
+      const value1NodeTag = value1NodeCreateCall[0];
+      const value1NodeCreateInvocationOrder =
+        createCallOrder[valueNodeCreateCallIndices[0]];
+
+      const propsNodeCreateCallIndex = createCalls.findIndex(
+        call => call[1].type === 'props',
+      );
+      const propsNodeCreateCall = createCalls[propsNodeCreateCallIndex];
+      const propsNodeTag = propsNodeCreateCall[0];
+      const propsNodeCreateInvocationOrder =
+        createCallOrder[propsNodeCreateCallIndex];
+
+      const value1PropsConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === value1NodeTag && call[1] === propsNodeTag,
+      );
+      const value1PropsConnectInvocationOrder =
+        connectCallOrder[value1PropsConnectCallIndex];
+
+      expect(value1NodeCreateInvocationOrder).toBeLessThan(
+        value1PropsConnectInvocationOrder,
+      );
+      expect(propsNodeCreateInvocationOrder).toBeLessThan(
+        value1PropsConnectInvocationOrder,
+      );
+
+      // Second value node and props node should both be created before they are connected
+      const value2NodeCreateCall = createCalls[valueNodeCreateCallIndices[1]];
+      const value2NodeTag = value2NodeCreateCall[0];
+      const value2NodeCreateInvocationOrder =
+        createCallOrder[valueNodeCreateCallIndices[1]];
+
+      const value2PropsConnectCallIndex = connectCalls.findIndex(
+        call => call[0] === value2NodeTag && call[1] === propsNodeTag,
+      );
+      const value2PropsConnectInvocationOrder =
+        connectCallOrder[value2PropsConnectCallIndex];
+
+      expect(value2NodeCreateInvocationOrder).toBeLessThan(
+        value2PropsConnectInvocationOrder,
+      );
+      expect(propsNodeCreateInvocationOrder).toBeLessThan(
+        value2PropsConnectInvocationOrder,
       );
     });
 
@@ -927,6 +1238,30 @@ describe('Native Animated', () => {
 
       animation.stop();
       expect(NativeAnimatedModule.stopAnimation).toBeCalledWith(animationId);
+    });
+
+    it('calls stopAnimation callback with native value', () => {
+      NativeAnimatedModule.getValue = jest.fn((tag, saveCallback) => {
+        saveCallback(1);
+      });
+
+      const anim = new Animated.Value(0);
+      Animated.timing(anim, {
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+
+      const tag = anim.__getNativeTag();
+
+      let currentValue = 0;
+      anim.stopAnimation(value => (currentValue = value));
+
+      expect(NativeAnimatedModule.getValue).toBeCalledWith(
+        tag,
+        expect.any(Function),
+      );
+
+      expect(currentValue).toEqual(1);
     });
   });
 

@@ -1,5 +1,5 @@
 /**
- * Portions Copyright (c) Facebook, Inc. and its affiliates.
+ * Portions Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -92,7 +92,7 @@ function newtonRaphsonIterate(
   return aGuessT;
 }
 
-module.exports = function bezier(
+export default function bezier(
   mX1: number,
   mY1: number,
   mX2: number,
@@ -105,7 +105,7 @@ module.exports = function bezier(
   // Precompute samples table
   const sampleValues = float32ArraySupported
     ? new Float32Array(kSplineTableSize)
-    : new Array(kSplineTableSize);
+    : new Array<number>(kSplineTableSize);
   if (mX1 !== mY1 || mX2 !== mY2) {
     for (let i = 0; i < kSplineTableSize; ++i) {
       sampleValues[i] = calcBezier(i * kSampleStepSize, mX1, mX2);
@@ -161,4 +161,4 @@ module.exports = function bezier(
     }
     return calcBezier(getTForX(x), mY1, mY2);
   };
-};
+}

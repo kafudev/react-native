@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
+# Copyright (c) Meta Platforms, Inc. and affiliates.
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
@@ -24,8 +24,8 @@ Pod::Spec.new do |s|
   s.summary                = "Fabric for React Native."
   s.homepage               = "https://reactnative.dev/"
   s.license                = package["license"]
-  s.author                 = "Facebook, Inc. and its affiliates"
-  s.platforms              = { :ios => "11.0" }
+  s.author                 = "Meta Platforms, Inc. and its affiliates"
+  s.platforms              = { :ios => "12.4" }
   s.source                 = source
   s.source_files           = "dummyFile.cpp"
   s.pod_target_xcconfig = { "USE_HEADERMAP" => "YES",
@@ -37,5 +37,6 @@ Pod::Spec.new do |s|
     :js_srcs_dir => "#{react_native_path}/Libraries",
     :library_name => "rncore",
     :library_type => "components",
+    :output_dir => "#{react_native_path}/../ReactCommon"
   })
 end

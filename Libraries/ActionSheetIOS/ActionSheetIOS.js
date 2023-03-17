@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -8,12 +8,13 @@
  * @format
  */
 
+import type {ProcessedColorValue} from '../StyleSheet/processColor';
+import type {ColorValue} from '../StyleSheet/StyleSheet';
+
 import RCTActionSheetManager from './NativeActionSheetManager';
 
+const processColor = require('../StyleSheet/processColor').default;
 const invariant = require('invariant');
-const processColor = require('../StyleSheet/processColor');
-import type {ColorValue} from '../StyleSheet/StyleSheet';
-import type {ProcessedColorValue} from '../StyleSheet/processColor';
 
 /**
  * Display action sheets and share sheets on iOS.
@@ -142,6 +143,13 @@ const ActionSheetIOS = {
       failureCallback,
       successCallback,
     );
+  },
+
+  dismissActionSheet: () => {
+    invariant(RCTActionSheetManager, "ActionSheetManager doesn't exist");
+    if (typeof RCTActionSheetManager.dismissActionSheet === 'function') {
+      RCTActionSheetManager.dismissActionSheet();
+    }
   },
 };
 

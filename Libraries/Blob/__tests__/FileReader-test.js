@@ -1,11 +1,11 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @format
- * @emails oncall+react_native
+ * @oncall react_native
  */
 
 'use strict';
@@ -37,5 +37,17 @@ describe('FileReader', function () {
       reader.readAsDataURL(new Blob());
     });
     expect(e.target.result).toBe('data:text/plain;base64,NDI=');
+  });
+
+  it('should read blob as ArrayBuffer', async () => {
+    const e = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = resolve;
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(new Blob());
+    });
+    const ab = e.target.result;
+    expect(ab.byteLength).toBe(2);
+    expect(new TextDecoder().decode(ab)).toBe('42');
   });
 });

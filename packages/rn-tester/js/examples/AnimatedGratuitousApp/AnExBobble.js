@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -31,6 +31,7 @@ class AnExBobble extends React.Component<Object, any> {
   constructor(props: Object) {
     super(props);
     this.state = {};
+    // $FlowFixMe[prop-missing]
     this.state.bobbles = BOBBLE_SPOTS.map((_, i) => {
       return new Animated.ValueXY();
     });

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -8,7 +8,6 @@
 #import "RCTTextInputComponentView.h"
 
 #import <react/renderer/components/iostextinput/TextInputComponentDescriptor.h>
-#import <react/renderer/graphics/Geometry.h>
 #import <react/renderer/textlayoutmanager/RCTAttributedTextUtils.h>
 #import <react/renderer/textlayoutmanager/TextLayoutManager.h>
 
@@ -246,6 +245,11 @@ using namespace facebook::react;
       UIEdgeInsetsInsetRect(self.bounds, RCTUIEdgeInsetsFromEdgeInsets(layoutMetrics.borderWidth));
   _backedTextInputView.textContainerInset =
       RCTUIEdgeInsetsFromEdgeInsets(layoutMetrics.contentInsets - layoutMetrics.borderWidth);
+
+  if (_eventEmitter) {
+    auto const &textInputEventEmitter = *std::static_pointer_cast<TextInputEventEmitter const>(_eventEmitter);
+    textInputEventEmitter.onContentSizeChange([self _textInputMetrics]);
+  }
 }
 
 - (void)prepareForRecycle
@@ -300,20 +304,25 @@ using namespace facebook::react;
   }
 }
 
-- (BOOL)textInputShouldReturn
+- (BOOL)textInputShouldSubmitOnReturn
 {
-  // We send `submit` event here, in `textInputShouldReturn`
+  const SubmitBehavior submitBehavior = [self getSubmitBehavior];
+  const BOOL shouldSubmit = submitBehavior == SubmitBehavior::Submit || submitBehavior == SubmitBehavior::BlurAndSubmit;
+  // We send `submit` event here, in `textInputShouldSubmitOnReturn`
   // (not in `textInputDidReturn)`, because of semantic of the event:
   // `onSubmitEditing` is called when "Submit" button
   // (the blue key on onscreen keyboard) did pressed
   // (no connection to any specific "submitting" process).
 
-  if (_eventEmitter) {
+  if (_eventEmitter && shouldSubmit) {
     std::static_pointer_cast<TextInputEventEmitter const>(_eventEmitter)->onSubmitEditing([self _textInputMetrics]);
   }
+  return shouldSubmit;
+}
 
-  auto const &props = *std::static_pointer_cast<TextInputProps const>(_props);
-  return props.traits.blurOnSubmit;
+- (BOOL)textInputShouldReturn
+{
+  return [self getSubmitBehavior] == SubmitBehavior::BlurAndSubmit;
 }
 
 - (void)textInputDidReturn
@@ -323,16 +332,23 @@ using namespace facebook::react;
 
 - (NSString *)textInputShouldChangeText:(NSString *)text inRange:(NSRange)range
 {
+  auto const &props = *std::static_pointer_cast<TextInputProps const>(_props);
+
   if (!_backedTextInputView.textWasPasted) {
     if (_eventEmitter) {
       KeyPressMetrics keyPressMetrics;
       keyPressMetrics.text = RCTStringFromNSString(text);
       keyPressMetrics.eventCount = _mostRecentEventCount;
-      std::static_pointer_cast<TextInputEventEmitter const>(_eventEmitter)->onKeyPress(keyPressMetrics);
+
+      auto const &textInputEventEmitter = *std::static_pointer_cast<TextInputEventEmitter const>(_eventEmitter);
+      if (props.onKeyPressSync) {
+        textInputEventEmitter.onKeyPressSync(keyPressMetrics);
+      } else {
+        textInputEventEmitter.onKeyPress(keyPressMetrics);
+      }
     }
   }
 
-  auto const &props = *std::static_pointer_cast<TextInputProps const>(_props);
   if (props.maxLength) {
     NSInteger allowedLength = props.maxLength - _backedTextInputView.attributedText.string.length + range.length;
 
@@ -374,7 +390,13 @@ using namespace facebook::react;
   [self _updateState];
 
   if (_eventEmitter) {
-    std::static_pointer_cast<TextInputEventEmitter const>(_eventEmitter)->onChange([self _textInputMetrics]);
+    auto const &textInputEventEmitter = *std::static_pointer_cast<TextInputEventEmitter const>(_eventEmitter);
+    auto const &props = *std::static_pointer_cast<TextInputProps const>(_props);
+    if (props.onChangeSync) {
+      textInputEventEmitter.onChangeSync([self _textInputMetrics]);
+    } else {
+      textInputEventEmitter.onChange([self _textInputMetrics]);
+    }
   }
 }
 
@@ -553,8 +575,8 @@ using namespace facebook::react;
 
 - (void)_restoreTextSelection
 {
-  const auto selection = std::dynamic_pointer_cast<TextInputProps const>(_props)->selection.get_pointer();
-  if (selection == nullptr) {
+  auto const selection = std::dynamic_pointer_cast<TextInputProps const>(_props)->selection;
+  if (!selection.has_value()) {
     return;
   }
   auto start = [_backedTextInputView positionFromPosition:_backedTextInputView.beginningOfDocument
@@ -604,8 +626,9 @@ using namespace facebook::react;
   // the settings on a dictation.
   // Similarly, when the user is in the middle of inputting some text in Japanese/Chinese, there will be styling on the
   // text that we should disregard. See
-  // https://developer.apple.com/documentation/uikit/uitextinput/1614489-markedtextrange?language=objc for more info. If
-  // the user added an emoji, the system adds a font attribute for the emoji and stores the original font in
+  // https://developer.apple.com/documentation/uikit/uitextinput/1614489-markedtextrange?language=objc for more info.
+  // Also, updating the attributed text while inputting Korean language will break input mechanism.
+  // If the user added an emoji, the system adds a font attribute for the emoji and stores the original font in
   // NSOriginalFont. Lastly, when entering a password, etc., there will be additional styling on the field as the native
   // text view handles showing the last character for a split second.
   __block BOOL fontHasBeenUpdatedBySystem = false;
@@ -620,6 +643,7 @@ using namespace facebook::react;
 
   BOOL shouldFallbackToBareTextComparison =
       [_backedTextInputView.textInputMode.primaryLanguage isEqualToString:@"dictation"] ||
+      [_backedTextInputView.textInputMode.primaryLanguage isEqualToString:@"ko-KR"] ||
       _backedTextInputView.markedTextRange || _backedTextInputView.isSecureTextEntry || fontHasBeenUpdatedBySystem;
 
   if (shouldFallbackToBareTextComparison) {
@@ -627,6 +651,19 @@ using namespace facebook::react;
   } else {
     return ([newText isEqualToAttributedString:oldText]);
   }
+}
+
+- (SubmitBehavior)getSubmitBehavior
+{
+  auto const &props = *std::static_pointer_cast<TextInputProps const>(_props);
+  const SubmitBehavior submitBehaviorDefaultable = props.traits.submitBehavior;
+
+  // We should always have a non-default `submitBehavior`, but in case we don't, set it based on multiline.
+  if (submitBehaviorDefaultable == SubmitBehavior::Default) {
+    return props.traits.multiline ? SubmitBehavior::Newline : SubmitBehavior::BlurAndSubmit;
+  }
+
+  return submitBehaviorDefaultable;
 }
 
 @end

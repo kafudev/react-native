@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -49,11 +49,18 @@ export default function splitLayoutProps(props: ?____ViewStyle_Internal): {
         case 'bottom':
         case 'top':
         case 'transform':
+        case 'rowGap':
+        case 'columnGap':
+        case 'gap':
           // $FlowFixMe[cannot-write]
+          // $FlowFixMe[incompatible-use]
+          // $FlowFixMe[prop-missing]
           outer[prop] = props[prop];
           break;
         default:
           // $FlowFixMe[cannot-write]
+          // $FlowFixMe[incompatible-use]
+          // $FlowFixMe[prop-missing]
           inner[prop] = props[prop];
           break;
       }

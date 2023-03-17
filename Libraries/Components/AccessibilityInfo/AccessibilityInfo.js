@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -8,16 +8,16 @@
  * @format
  */
 
-import RCTDeviceEventEmitter from '../../EventEmitter/RCTDeviceEventEmitter';
-import {sendAccessibilityEvent} from '../../Renderer/shims/ReactNative';
 import type {HostComponent} from '../../Renderer/shims/ReactNativeTypes';
-import Platform from '../../Utilities/Platform';
-import type EventEmitter from '../../vendor/emitter/EventEmitter';
 import type {EventSubscription} from '../../vendor/emitter/EventEmitter';
+import type {ElementRef} from 'react';
+
+import RCTDeviceEventEmitter from '../../EventEmitter/RCTDeviceEventEmitter';
+import {sendAccessibilityEvent} from '../../ReactNative/RendererProxy';
+import Platform from '../../Utilities/Platform';
+import legacySendAccessibilityEvent from './legacySendAccessibilityEvent';
 import NativeAccessibilityInfoAndroid from './NativeAccessibilityInfo';
 import NativeAccessibilityManagerIOS from './NativeAccessibilityManager';
-import legacySendAccessibilityEvent from './legacySendAccessibilityEvent';
-import type {ElementRef} from 'react';
 
 // Events that are only supported on Android.
 type AccessibilityEventDefinitionsAndroid = {
@@ -41,7 +41,7 @@ type AccessibilityEventDefinitions = {
   screenReaderChanged: [boolean],
 };
 
-type AccessibilityEventTypes = 'click' | 'focus';
+type AccessibilityEventTypes = 'click' | 'focus' | 'viewHoverEnter';
 
 // Mapping of public event names to platform-specific event names.
 const EventNames: Map<
@@ -180,6 +180,34 @@ const AccessibilityInfo = {
   },
 
   /**
+   * Query whether reduce motion and prefer cross-fade transitions settings are currently enabled.
+   *
+   * Returns a promise which resolves to a boolean.
+   * The result is `true` when  prefer cross-fade transitions is enabled and `false` otherwise.
+   *
+   * See https://reactnative.dev/docs/accessibilityinfo#prefersCrossFadeTransitions
+   */
+  prefersCrossFadeTransitions(): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      if (Platform.OS === 'android') {
+        return Promise.resolve(false);
+      } else {
+        if (
+          NativeAccessibilityManagerIOS?.getCurrentPrefersCrossFadeTransitionsState !=
+          null
+        ) {
+          NativeAccessibilityManagerIOS.getCurrentPrefersCrossFadeTransitionsState(
+            resolve,
+            reject,
+          );
+        } else {
+          reject(null);
+        }
+      }
+    });
+  },
+
+  /**
    * Query whether reduced transparency is currently enabled.
    *
    * Returns a promise which resolves to a boolean.
@@ -296,12 +324,14 @@ const AccessibilityInfo = {
    */
   addEventListener<K: $Keys<AccessibilityEventDefinitions>>(
     eventName: K,
+    // $FlowIssue[incompatible-type] - Flow bug with unions and generics (T128099423)
     handler: (...$ElementType<AccessibilityEventDefinitions, K>) => void,
   ): EventSubscription {
     const deviceEventName = EventNames.get(eventName);
     return deviceEventName == null
       ? {remove(): void {}}
-      : RCTDeviceEventEmitter.addListener(deviceEventName, handler);
+      : // $FlowFixMe[incompatible-call]
+        RCTDeviceEventEmitter.addListener(deviceEventName, handler);
   },
 
   /**
@@ -316,7 +346,7 @@ const AccessibilityInfo = {
   /**
    * Send a named accessibility event to a HostComponent.
    */
-  sendAccessibilityEvent_unstable(
+  sendAccessibilityEvent(
     handle: ElementRef<HostComponent<mixed>>,
     eventType: AccessibilityEventTypes,
   ) {
@@ -342,21 +372,26 @@ const AccessibilityInfo = {
   },
 
   /**
-   * @deprecated Use `remove` on the EventSubscription from `addEventListener`.
+   * Post a string to be announced by the screen reader.
+   * - `announcement`: The string announced by the screen reader.
+   * - `options`: An object that configures the reading options.
+   *   - `queue`: The announcement will be queued behind existing announcements. iOS only.
    */
-  removeEventListener<K: $Keys<AccessibilityEventDefinitions>>(
-    eventName: K,
-    handler: (...$ElementType<AccessibilityEventDefinitions, K>) => void,
+  announceForAccessibilityWithOptions(
+    announcement: string,
+    options: {queue?: boolean},
   ): void {
-    // NOTE: This will report a deprecation notice via `console.error`.
-    const deviceEventName = EventNames.get(eventName);
-    if (deviceEventName != null) {
-      // $FlowIgnore[incompatible-cast]
-      (RCTDeviceEventEmitter: EventEmitter<$FlowFixMe>).removeListener(
-        'deviceEventName',
-        // $FlowFixMe[invalid-tuple-arity]
-        handler,
-      );
+    if (Platform.OS === 'android') {
+      NativeAccessibilityInfoAndroid?.announceForAccessibility(announcement);
+    } else {
+      if (NativeAccessibilityManagerIOS?.announceForAccessibilityWithOptions) {
+        NativeAccessibilityManagerIOS?.announceForAccessibilityWithOptions(
+          announcement,
+          options,
+        );
+      } else {
+        NativeAccessibilityManagerIOS?.announceForAccessibility(announcement);
+      }
     }
   },
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -126,6 +126,8 @@ public class MountItemDispatcher {
       mInDispatch = false;
     }
 
+    // We call didDispatchMountItems regardless of whether we actually dispatched anything, since
+    // NativeAnimatedModule relies on this for executing any animations that may have been scheduled
     mItemDispatchListener.didDispatchMountItems();
 
     // Decide if we want to try reentering
@@ -204,8 +206,7 @@ public class MountItemDispatcher {
     if (viewCommandMountItemsToDispatch != null) {
       Systrace.beginSection(
           Systrace.TRACE_TAG_REACT_JAVA_BRIDGE,
-          "FabricUIManager::mountViews viewCommandMountItems to execute: "
-              + viewCommandMountItemsToDispatch.size());
+          "FabricUIManager::mountViews viewCommandMountItems");
       for (DispatchCommandMountItem command : viewCommandMountItemsToDispatch) {
         if (ENABLE_FABRIC_LOGS) {
           printMountItem(command, "dispatchMountItems: Executing viewCommandMountItem");
@@ -248,9 +249,7 @@ public class MountItemDispatcher {
 
     if (preMountItemsToDispatch != null) {
       Systrace.beginSection(
-          Systrace.TRACE_TAG_REACT_JAVA_BRIDGE,
-          "FabricUIManager::mountViews preMountItems to execute: "
-              + preMountItemsToDispatch.size());
+          Systrace.TRACE_TAG_REACT_JAVA_BRIDGE, "FabricUIManager::mountViews preMountItems");
 
       for (PreAllocateViewMountItem preMountItem : preMountItemsToDispatch) {
         executeOrEnqueue(preMountItem);
@@ -262,7 +261,7 @@ public class MountItemDispatcher {
     if (mountItemsToDispatch != null) {
       Systrace.beginSection(
           Systrace.TRACE_TAG_REACT_JAVA_BRIDGE,
-          "FabricUIManager::mountViews mountItems to execute: " + mountItemsToDispatch.size());
+          "FabricUIManager::mountViews mountItems to execute");
 
       long batchedExecutionStartTime = SystemClock.uptimeMillis();
 
@@ -277,6 +276,10 @@ public class MountItemDispatcher {
           // If there's an exception, we want to log diagnostics in prod and rethrow.
           FLog.e(TAG, "dispatchMountItems: caught exception, displaying mount state", e);
           for (MountItem m : mountItemsToDispatch) {
+            if (m == mountItem) {
+              // We want to mark the mount item that caused exception
+              FLog.e(TAG, "dispatchMountItems: mountItem: next mountItem triggered exception!");
+            }
             printMountItem(m, "dispatchMountItems: mountItem");
           }
           if (mountItem.getSurfaceId() != View.NO_ID) {
@@ -356,13 +359,16 @@ public class MountItemDispatcher {
   @Nullable
   private static <E extends MountItem> List<E> drainConcurrentItemQueue(
       ConcurrentLinkedQueue<E> queue) {
+    if (queue.isEmpty()) {
+      return null;
+    }
     List<E> result = new ArrayList<>();
-    while (!queue.isEmpty()) {
+    do {
       E item = queue.poll();
       if (item != null) {
         result.add(item);
       }
-    }
+    } while (!queue.isEmpty());
     if (result.size() == 0) {
       return null;
     }

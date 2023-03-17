@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -25,11 +25,28 @@ public class ReactFeatureFlags {
    */
   public static volatile boolean useTurboModules = false;
 
+  /** In Bridgeless mode, should legacy NativeModules use the TurboModule system? */
+  public static volatile boolean unstable_useTurboModuleInterop = false;
+
   /**
    * Should this application use the new (Fabric) Renderer? If yes, all rendering in this app will
    * use Fabric instead of the legacy renderer.
    */
   public static volatile boolean enableFabricRenderer = false;
+
+  /**
+   * Feature flag to enable the new bridgeless architecture. Note: Enabling this will force enable
+   * the following flags: `useTurboModules` & `enableFabricRenderer`.
+   */
+  public static boolean enableBridgelessArchitecture = false;
+
+  /**
+   * Does the bridgeless architecture log soft exceptions. Could be useful for tracking down issues.
+   */
+  public static volatile boolean enableBridgelessArchitectureSoftExceptions = false;
+
+  /** Does the bridgeless architecture use the new create/reload/destroy routines */
+  public static volatile boolean enableBridgelessArchitectureNewCreateReloadDestroy = false;
 
   /**
    * After TurboModules and Fabric are enabled, we need to ensure that the legacy NativeModule isn't
@@ -41,74 +58,73 @@ public class ReactFeatureFlags {
   /** Should we dispatch TurboModule methods with promise returns to the NativeModules thread? */
   public static volatile boolean enableTurboModulePromiseAsyncDispatch = false;
 
-  /**
-   * Experiment:
-   *
-   * <p>Bridge and Bridgeless mode can run concurrently. This means that there can be two
-   * TurboModule systems alive at the same time.
-   *
-   * <p>The TurboModule system stores all JS callbacks in a global LongLivedObjectCollection. This
-   * collection is cleared when the JS VM is torn down. Implication: Tearing down the bridge JSVM
-   * invalidates the bridgeless JSVM's callbacks, and vice versa.
-   *
-   * <p>useGlobalCallbackCleanupScopeUsingRetainJSCallback => Use a retainJSCallbacks lambda to
-   * store jsi::Functions into the global LongLivedObjectCollection
-   *
-   * <p>useTurboModuleManagerCallbackCleanupScope => Use a retainJSCallbacks labmda to store
-   * jsi::Functions into a LongLivedObjectCollection owned by the TurboModuleManager
-   */
-  public static boolean useGlobalCallbackCleanupScopeUsingRetainJSCallback = false;
-
-  public static boolean useTurboModuleManagerCallbackCleanupScope = false;
-
   /** This feature flag enables logs for Fabric */
   public static boolean enableFabricLogs = false;
-
-  /** Feature flag to configure eager initialization of Fabric */
-  public static boolean eagerInitializeFabric = false;
-
-  /** Enables Static ViewConfig in RN Android native code. */
-  public static boolean enableExperimentalStaticViewConfigs = false;
-
-  public static boolean enableRuntimeScheduler = false;
-
-  public static boolean enableRuntimeSchedulerInTurboModule = false;
-
-  /** Enables a more aggressive cleanup during destruction of ReactContext */
-  public static boolean enableReactContextCleanupFix = false;
-
-  /** Feature flag to configure eager initialization of MapBuffer So file */
-  public static boolean enableEagerInitializeMapBufferSoFile = false;
 
   /** Feature flag to configure eager attachment of the root view/initialisation of the JS code */
   public static boolean enableEagerRootViewAttachment = false;
 
-  private static boolean mapBufferSerializationEnabled = false;
+  /* Enables or disables MapBuffer use in Props infrastructure. */
+  public static boolean useMapBufferProps = false;
 
-  /** Enables or disables MapBuffer Serialization */
-  public static void setMapBufferSerializationEnabled(boolean enabled) {
-    mapBufferSerializationEnabled = enabled;
-  }
+  /** Enables or disables calculation of Transformed Frames */
+  public static boolean calculateTransformedFramesEnabled = false;
 
-  public static boolean isMapBufferSerializationEnabled() {
-    return mapBufferSerializationEnabled;
-  }
+  public static boolean dispatchPointerEvents = false;
 
-  /** Enables Fabric for LogBox */
-  public static boolean enableFabricInLogBox = false;
+  /** Feature Flag to enable the pending event queue in fabric before mounting views */
+  public static boolean enableFabricPendingEventQueue = false;
 
-  public static boolean enableLockFreeEventDispatcher = false;
+  /**
+   * Feature flag that controls how turbo modules are exposed to JS
+   *
+   * <ul>
+   *   <li>0 = as a HostObject
+   *   <li>1 = as a plain object, backed with a HostObject as prototype
+   *   <li>2 = as a plain object, with all methods eagerly configured
+   * </ul>
+   */
+  public static int turboModuleBindingMode = 0;
 
-  public static boolean enableAggressiveEventEmitterCleanup = false;
+  /**
+   * Feature Flag to enable View Recycling. When enabled, individual ViewManagers must still opt-in.
+   */
+  public static boolean enableViewRecycling = false;
 
-  public static boolean insertZReorderBarriersOnViewGroupChildren = true;
+  /**
+   * Enable prop iterator setter-style construction of Props in C++ (this flag is not used in Java).
+   */
+  public static boolean enableCppPropsIteratorSetter = false;
 
-  public static boolean enableScrollViewSnapToAlignmentProp = true;
+  /**
+   * Allow Differentiator.cpp and FabricMountingManager.cpp to generate a RemoveDeleteTree mega-op.
+   */
+  public static boolean enableRemoveDeleteTreeInstruction = false;
 
-  public static boolean useDispatchUniqueForCoalescableEvents = false;
+  /** Temporary flag to allow execution of mount items up to 15ms earlier than normal. */
+  public static boolean enableEarlyScheduledMountItemExecution = false;
 
-  public static boolean useUpdatedTouchPreprocessing = false;
+  /**
+   * Allow closing the small gap that appears between paths when drawing a rounded View with a
+   * border.
+   */
+  public static boolean enableCloseVisibleGapBetweenPaths = true;
 
-  /** TODO: T103427072 Delete ReactFeatureFlags.enableNestedTextOnPressEventFix */
-  public static boolean enableNestedTextOnPressEventFix = true;
+  /**
+   * Allow fix in layout animation to drop delete...create mutations which could cause missing view
+   * state in Fabric SurfaceMountingManager.
+   */
+  public static boolean reduceDeleteCreateMutationLayoutAnimation = true;
+
+  /**
+   * Allow fix to drop delete...create mutations which could cause missing view state in Fabric
+   * SurfaceMountingManager.
+   */
+  public static boolean reduceDeleteCreateMutation = false;
+
+  /**
+   * Use JSI NativeState API to store references to native objects rather than the more expensive
+   * HostObject pattern
+   */
+  public static boolean useNativeState = false;
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,17 +10,17 @@
 
 'use strict';
 
-import Platform from '../Utilities/Platform';
-import React, {useRef, forwardRef, useImperativeHandle} from 'react';
-import VirtualizedSectionList from './VirtualizedSectionList';
-
 import type {ScrollResponderType} from '../Components/ScrollView/ScrollView';
 import type {
-  SectionBase as _SectionBase,
-  Props as VirtualizedSectionListProps,
   ScrollToLocationParamsType,
-} from './VirtualizedSectionList';
-import type {Element, ElementRef, AbstractComponent} from 'react';
+  SectionBase as _SectionBase,
+  VirtualizedSectionListProps,
+} from '@react-native/virtualized-lists';
+import type {AbstractComponent, Element, ElementRef} from 'react';
+
+import Platform from '../Utilities/Platform';
+import {VirtualizedSectionList} from '@react-native/virtualized-lists';
+import React, {forwardRef, useImperativeHandle, useRef} from 'react';
 
 type Item = any;
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -10,7 +10,7 @@
 
 const RNTesterTitle = require('./RNTesterTitle');
 const React = require('react');
-const {ScrollView, StyleSheet, View} = require('react-native');
+const {SafeAreaView, ScrollView, StyleSheet, View} = require('react-native');
 import {RNTesterThemeContext} from './RNTesterTheme';
 
 type Props = $ReadOnly<{|
@@ -23,7 +23,11 @@ type Props = $ReadOnly<{|
 class RNTesterPage extends React.Component<Props> {
   render(): React.Node {
     let ContentWrapper;
-    let wrapperProps = {};
+    let wrapperProps: {
+      automaticallyAdjustContentInsets?: boolean,
+      keyboardShouldPersistTaps?: string,
+      keyboardDismissMode?: string,
+    } = {};
     if (this.props.noScroll) {
       ContentWrapper = ((View: any): React.ComponentType<any>);
     } else {
@@ -40,7 +44,7 @@ class RNTesterPage extends React.Component<Props> {
       <RNTesterThemeContext.Consumer>
         {theme => {
           return (
-            <View
+            <SafeAreaView
               style={[
                 styles.container,
                 {backgroundColor: theme.SecondarySystemBackgroundColor},
@@ -50,7 +54,7 @@ class RNTesterPage extends React.Component<Props> {
                 {this.props.children}
                 {spacer}
               </ContentWrapper>
-            </View>
+            </SafeAreaView>
           );
         }}
       </RNTesterThemeContext.Consumer>

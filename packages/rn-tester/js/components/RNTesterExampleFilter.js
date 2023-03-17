@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -80,10 +80,12 @@ class RNTesterExampleFilter<T> extends React.Component<Props<T>, State> {
   }
 
   _renderFilteredSections(
-    filteredSections: Array<
-      $TEMPORARY$object<{data: Array<T>, key: string, title: string}>,
-    >,
-  ): ?React.Element<any> {
+    filteredSections: $ReadOnlyArray<{
+      data: Array<T>,
+      key: string,
+      title: string,
+    }>,
+  ): React.Node {
     if (this.props.page === 'examples_page') {
       return (
         <ScrollView

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -95,6 +95,13 @@
 
 - (void)invalidate
 {
+  // ensure observer callbacks do not hold a reference to weak self via pauseCallback
+  for (RCTModuleData *moduleData in _frameUpdateObservers) {
+    id<RCTFrameUpdateObserver> observer = (id<RCTFrameUpdateObserver>)moduleData.instance;
+    [observer setPauseCallback:nil];
+  }
+  [_frameUpdateObservers removeAllObjects]; // just to be explicit
+
   [_jsDisplayLink invalidate];
 }
 

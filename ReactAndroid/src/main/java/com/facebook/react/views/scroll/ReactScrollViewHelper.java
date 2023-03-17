@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -15,17 +15,19 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.OverScroller;
 import androidx.annotation.Nullable;
+import androidx.core.view.ViewCompat;
 import com.facebook.common.logging.FLog;
-import com.facebook.react.bridge.JSApplicationIllegalArgumentException;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
+import com.facebook.react.common.ReactConstants;
 import com.facebook.react.common.build.ReactBuildConfig;
 import com.facebook.react.uimanager.FabricViewStateManager;
 import com.facebook.react.uimanager.PixelUtil;
 import com.facebook.react.uimanager.UIManagerHelper;
 import com.facebook.react.uimanager.common.UIManagerType;
 import com.facebook.react.uimanager.common.ViewUtil;
+import com.facebook.react.uimanager.events.EventDispatcher;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -66,34 +68,39 @@ public class ReactScrollViewHelper {
   private static boolean mSmoothScrollDurationInitialized = false;
 
   /** Shared by {@link ReactScrollView} and {@link ReactHorizontalScrollView}. */
-  public static void emitScrollEvent(ViewGroup scrollView, float xVelocity, float yVelocity) {
+  public static <T extends ViewGroup & HasScrollEventThrottle> void emitScrollEvent(
+      T scrollView, float xVelocity, float yVelocity) {
     emitScrollEvent(scrollView, ScrollEventType.SCROLL, xVelocity, yVelocity);
   }
 
-  public static void emitScrollBeginDragEvent(ViewGroup scrollView) {
+  public static <T extends ViewGroup & HasScrollEventThrottle> void emitScrollBeginDragEvent(
+      T scrollView) {
     emitScrollEvent(scrollView, ScrollEventType.BEGIN_DRAG);
   }
 
-  public static void emitScrollEndDragEvent(
-      ViewGroup scrollView, float xVelocity, float yVelocity) {
+  public static <T extends ViewGroup & HasScrollEventThrottle> void emitScrollEndDragEvent(
+      T scrollView, float xVelocity, float yVelocity) {
     emitScrollEvent(scrollView, ScrollEventType.END_DRAG, xVelocity, yVelocity);
   }
 
-  public static void emitScrollMomentumBeginEvent(
-      ViewGroup scrollView, int xVelocity, int yVelocity) {
+  public static <T extends ViewGroup & HasScrollEventThrottle> void emitScrollMomentumBeginEvent(
+      T scrollView, int xVelocity, int yVelocity) {
     emitScrollEvent(scrollView, ScrollEventType.MOMENTUM_BEGIN, xVelocity, yVelocity);
   }
 
-  public static void emitScrollMomentumEndEvent(ViewGroup scrollView) {
+  public static <T extends ViewGroup & HasScrollEventThrottle> void emitScrollMomentumEndEvent(
+      T scrollView) {
     emitScrollEvent(scrollView, ScrollEventType.MOMENTUM_END);
   }
 
-  private static void emitScrollEvent(ViewGroup scrollView, ScrollEventType scrollEventType) {
+  private static <T extends ViewGroup & HasScrollEventThrottle> void emitScrollEvent(
+      T scrollView, ScrollEventType scrollEventType) {
     emitScrollEvent(scrollView, scrollEventType, 0, 0);
   }
 
-  private static void emitScrollEvent(
-      ViewGroup scrollView, ScrollEventType scrollEventType, float xVelocity, float yVelocity) {
+  private static <T extends ViewGroup & HasScrollEventThrottle> void emitScrollEvent(
+      T scrollView, ScrollEventType scrollEventType, float xVelocity, float yVelocity) {
+    long now = System.currentTimeMillis();
     View contentView = scrollView.getChildAt(0);
 
     if (contentView == null) {
@@ -106,20 +113,29 @@ public class ReactScrollViewHelper {
 
     ReactContext reactContext = (ReactContext) scrollView.getContext();
     int surfaceId = UIManagerHelper.getSurfaceId(reactContext);
-    UIManagerHelper.getEventDispatcherForReactTag(reactContext, scrollView.getId())
-        .dispatchEvent(
-            ScrollEvent.obtain(
-                surfaceId,
-                scrollView.getId(),
-                scrollEventType,
-                scrollView.getScrollX(),
-                scrollView.getScrollY(),
-                xVelocity,
-                yVelocity,
-                contentView.getWidth(),
-                contentView.getHeight(),
-                scrollView.getWidth(),
-                scrollView.getHeight()));
+
+    // It's possible for the EventDispatcher to go away - for example,
+    // if there's a crash initiated from JS and we tap on a ScrollView
+    // around teardown of RN, this will cause a NPE. We can safely ignore
+    // this since the crash is usually a red herring.
+    EventDispatcher eventDispatcher =
+        UIManagerHelper.getEventDispatcherForReactTag(reactContext, scrollView.getId());
+    if (eventDispatcher != null) {
+      eventDispatcher.dispatchEvent(
+          ScrollEvent.obtain(
+              surfaceId,
+              scrollView.getId(),
+              scrollEventType,
+              scrollView.getScrollX(),
+              scrollView.getScrollY(),
+              xVelocity,
+              yVelocity,
+              contentView.getWidth(),
+              contentView.getHeight(),
+              scrollView.getWidth(),
+              scrollView.getHeight()));
+      scrollView.setLastScrollDispatchTime(now);
+    }
   }
 
   /** This is only for Java listeners. onLayout events emitted to JS are handled elsewhere. */
@@ -137,7 +153,8 @@ public class ReactScrollViewHelper {
     } else if (jsOverScrollMode.equals(OVER_SCROLL_NEVER)) {
       return View.OVER_SCROLL_NEVER;
     } else {
-      throw new JSApplicationIllegalArgumentException("wrong overScrollMode: " + jsOverScrollMode);
+      FLog.w(ReactConstants.TAG, "wrong overScrollMode: " + jsOverScrollMode);
+      return View.OVER_SCROLL_IF_CONTENT_SCROLLS;
     }
   }
 
@@ -151,7 +168,8 @@ public class ReactScrollViewHelper {
     } else if ("end".equals(alignment)) {
       return SNAP_ALIGNMENT_END;
     } else {
-      throw new JSApplicationIllegalArgumentException("wrong snap alignment value: " + alignment);
+      FLog.w(ReactConstants.TAG, "wrong snap alignment value: " + alignment);
+      return SNAP_ALIGNMENT_DISABLED;
     }
   }
 
@@ -222,6 +240,7 @@ public class ReactScrollViewHelper {
     private final Point mLastStateUpdateScroll = new Point(-1, -1);
     private boolean mIsCanceled = false;
     private boolean mIsFinished = true;
+    private float mDecelerationRate = 0.985f;
 
     public ReactScrollViewScrollState(final int layoutDirection) {
       mLayoutDirection = layoutDirection;
@@ -291,6 +310,17 @@ public class ReactScrollViewHelper {
       mIsFinished = isFinished;
       return this;
     }
+
+    /** Get true if previous animation was finished */
+    public float getDecelerationRate() {
+      return mDecelerationRate;
+    }
+
+    /** Set the state of current animation is finished or not */
+    public ReactScrollViewScrollState setDecelerationRate(float decelerationRate) {
+      mDecelerationRate = decelerationRate;
+      return this;
+    }
   }
 
   /**
@@ -339,9 +369,9 @@ public class ReactScrollViewHelper {
           final T scrollView,
           final int currentValue,
           final int postAnimationValue,
-          final boolean isPositiveVelocity) {
+          final int velocity) {
     final ReactScrollViewScrollState scrollState = scrollView.getReactScrollViewScrollState();
-    final int velocityDirectionMask = isPositiveVelocity ? 1 : -1;
+    final int velocityDirectionMask = velocity != 0 ? velocity / Math.abs(velocity) : 0;
     final boolean isMovingTowardsAnimatedValue =
         velocityDirectionMask * (postAnimationValue - currentValue) > 0;
 
@@ -447,7 +477,7 @@ public class ReactScrollViewHelper {
   public static <
           T extends
               ViewGroup & FabricViewStateManager.HasFabricViewStateManager & HasScrollState
-                  & HasFlingAnimator>
+                  & HasFlingAnimator & HasScrollEventThrottle>
       void updateStateOnScrollChanged(
           final T scrollView, final float xVelocity, final float yVelocity) {
     // Race an UpdateState with every onScroll. This makes it more likely that, in Fabric,
@@ -491,6 +521,54 @@ public class ReactScrollViewHelper {
             });
   }
 
+  public static <
+          T extends
+              ViewGroup & FabricViewStateManager.HasFabricViewStateManager & HasScrollState
+                  & HasFlingAnimator>
+      Point predictFinalScrollPosition(
+          final T scrollView,
+          final int velocityX,
+          final int velocityY,
+          final int maximumOffsetX,
+          final int maximumOffsetY) {
+    final ReactScrollViewScrollState scrollState = scrollView.getReactScrollViewScrollState();
+    // ScrollView can *only* scroll for 250ms when using smoothScrollTo and there's
+    // no way to customize the scroll duration. So, we create a temporary OverScroller
+    // so we can predict where a fling would land and snap to nearby that point.
+    OverScroller scroller = new OverScroller(scrollView.getContext());
+    scroller.setFriction(1.0f - scrollState.getDecelerationRate());
+
+    // predict where a fling would end up so we can scroll to the nearest snap offset
+    int width =
+        scrollView.getWidth()
+            - ViewCompat.getPaddingStart(scrollView)
+            - ViewCompat.getPaddingEnd(scrollView);
+    int height =
+        scrollView.getHeight() - scrollView.getPaddingBottom() - scrollView.getPaddingTop();
+    Point finalAnimatedPositionScroll = scrollState.getFinalAnimatedPositionScroll();
+    scroller.fling(
+        getNextFlingStartValue(
+            scrollView,
+            scrollView.getScrollX(),
+            finalAnimatedPositionScroll.x,
+            velocityX), // startX
+        getNextFlingStartValue(
+            scrollView,
+            scrollView.getScrollY(),
+            finalAnimatedPositionScroll.y,
+            velocityY), // startY
+        velocityX, // velocityX
+        velocityY, // velocityY
+        0, // minX
+        maximumOffsetX, // maxX
+        0, // minY
+        maximumOffsetY, // maxY
+        width / 2, // overX
+        height / 2 // overY
+        );
+    return new Point(scroller.getFinalX(), scroller.getFinalY());
+  }
+
   public interface HasScrollState {
     /** Get the scroll state for the current ScrollView */
     ReactScrollViewScrollState getReactScrollViewScrollState();
@@ -505,5 +583,29 @@ public class ReactScrollViewHelper {
 
     /** Get the fling animator that is reused for the ScrollView to handle fling animation. */
     ValueAnimator getFlingAnimator();
+
+    /** Get the fling distance with current velocity for prediction */
+    int getFlingExtrapolatedDistance(int velocity);
+  }
+
+  public interface HasScrollEventThrottle {
+    /**
+     * Set the scroll event throttle in ms. This number is used to throttle the scroll events. The
+     * default value is zero, which means the scroll events are sent with no throttle.
+     */
+    void setScrollEventThrottle(int scrollEventThrottle);
+
+    /** Get the scroll event throttle in ms. */
+    int getScrollEventThrottle();
+
+    /** Set the scroll view's last dispatch time for throttling */
+    void setLastScrollDispatchTime(long lastScrollDispatchTime);
+
+    /** Get the scroll view dispatch time for throttling */
+    long getLastScrollDispatchTime();
+  }
+
+  public interface HasSmoothScroll {
+    void reactSmoothScrollTo(int x, int y);
   }
 }
